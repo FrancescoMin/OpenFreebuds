@@ -48,6 +48,7 @@ OpenFreebuds 让你在 PC 上直接控制华为 FreeBuds 等无线耳机的各�
 - [HUAWEI FreeBuds SE](./docs/devices/HUAWEI_FreeBuds_SE.md)
 - [HUAWEI FreeBuds SE 2](./docs/devices/HUAWEI_FreeBuds_SE_2.md)
 - [HUAWEI FreeBuds SE 4 ANC](./docs/devices/HUAWEI_FreeBuds_SE_4.md)
+- [HUAWEI FreeBuds SE 5 MAX](./docs/devices/HUAWEI_FreeBuds_SE_5_MAX.md)
 - [HUAWEI FreeBuds Studio](./docs/devices/HUAWEI_FreeBuds_Studio.md)
 - [HUAWEI FreeClip](./docs/devices/HUAWEI_FreeClip.md)
 - [HUAWEI FreeClip 2](./docs/devices/HUAWEI_FreeClip_2.md)
