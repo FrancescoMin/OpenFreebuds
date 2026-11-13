@@ -1,6 +1,8 @@
 import logging
 import os
 
+from pathlib import Path
+
 log = logging.getLogger("OfbDummyBackend")
 
 AUTOSTART_AVAILABLE = False
@@ -9,7 +11,7 @@ GLOBAL_HOTKEYS_AVAILABLE = False
 
 
 def get_app_storage_path():
-    return os.getcwd() + "/data"
+    return Path(os.getcwd()) / "data"
 
 
 def open_file(path):
@@ -49,4 +51,8 @@ def bt_list_devices():
 
 
 def is_dark_taskbar():
+    return None
+
+
+def get_active_bluetooth_audio_codec(mac_address=None):
     return None

@@ -1,14 +1,16 @@
 import asyncio
 import json
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QSlider, QMenu, QInputDialog, QMessageBox, QFileDialog
+from PyQt6.QtCore import Qt, QRectF, QTimer, QSize
+from PyQt6.QtGui import QIcon, QPainter, QPen, QColor, QBrush, QFont
+from PyQt6.QtWidgets import QSlider, QMenu, QInputDialog, QMessageBox, QFileDialog, QLabel, QWidget
 from qasync import asyncSlot
 
 from openfreebuds.exceptions import OfbTooManyItemsError
 from openfreebuds.utils.logger import create_logger
+from openfreebuds_backend import get_active_bluetooth_audio_codec
 from openfreebuds_qt.app.module.common import OfbQtCommonModule
+from openfreebuds_qt.config import OfbQtConfigParser
 from openfreebuds_qt.designer.sound_quality import Ui_OfbQtSoundQualityModule
 from openfreebuds_qt.qt_i18n import get_eq_preset_names
 from openfreebuds_qt.utils import get_img_colored
@@ -17,6 +19,91 @@ from openfreebuds_qt.utils.core_event import OfbCoreEvent
 from openfreebuds_qt.utils.qt_utils import fill_combo_box, blocked_signals, qt_error_handler
 
 log = create_logger("OfbQtSoundQualityModule")
+
+
+class OfbQtCodecPill(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._loading = True
+        self._angle = 0
+        self._text = ""
+        self.setFixedHeight(22)
+        self.setFixedWidth(42)
+        self.setToolTip(self.tr("Detecting Bluetooth audio codec…"))
+        self.setVisible(True)
+
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(33)  # ~30 FPS
+        self._anim_timer.timeout.connect(self._rotate)
+        self._anim_timer.start()
+
+    def sizeHint(self):
+        return QSize(self.width(), 22)
+
+    def minimumSizeHint(self):
+        return QSize(42, 22)
+
+    def _rotate(self):
+        if self._loading:
+            self._angle = (self._angle + 10) % 360
+            self.update()
+
+    def set_loading(self, tooltip=""):
+        if not self._loading:
+            self._loading = True
+            self._text = ""
+            self.setFixedWidth(42)
+            if not self._anim_timer.isActive():
+                self._anim_timer.start()
+        self.setToolTip(tooltip or self.tr("Detecting Bluetooth audio codec…"))
+        self.setVisible(True)
+        self.update()
+
+    def set_codec(self, text: str, tooltip: str = ""):
+        if self._loading or self._text != text:
+            self._loading = False
+            self._text = text
+            if self._anim_timer.isActive():
+                self._anim_timer.stop()
+            fm = self.fontMetrics()
+            w = fm.horizontalAdvance(text) + 24
+            self.setFixedWidth(max(w, 42))
+        self.setToolTip(tooltip)
+        self.setVisible(True)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
+        p.setBrush(QBrush(QColor("#2d2d2d")))
+        p.setPen(QPen(QColor("#444444"), 1))
+        p.drawRoundedRect(rect, 9, 9)
+
+        if self._loading:
+            size = 11
+            cx = self.width() / 2
+            cy = self.height() / 2
+            arc_rect = QRectF(cx - size / 2, cy - size / 2, size, size)
+
+            # Subtle background circle track
+            p.setPen(QPen(QColor(255, 255, 255, 35), 1.5))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawEllipse(arc_rect)
+
+            # Spinning white arc
+            pen = QPen(QColor("#ffffff"), 1.8)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen)
+            p.drawArc(arc_rect, int(self._angle * 16), int(100 * 16))
+        else:
+            p.setPen(QColor("#ffffff"))
+            font = p.font()
+            font.setPointSize(9)
+            font.setBold(True)
+            p.setFont(font)
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, self._text)
 
 
 class OfbQtSoundQualityModule(Ui_OfbQtSoundQualityModule, OfbQtCommonModule):
@@ -69,6 +156,27 @@ class OfbQtSoundQualityModule(Ui_OfbQtSoundQualityModule, OfbQtCommonModule):
         for i in range(10):
             self._add_slider(i)
         self.custom_eq.setVisible(False)
+
+        # Setup custom codec pill with loading spinner (instant loading)
+        old_pill = self.codec_pill
+        self.codec_pill = OfbQtCodecPill(self.sq_root)
+        self.sq_header_layout.replaceWidget(old_pill, self.codec_pill)
+        old_pill.deleteLater()
+        self.codec_pill.setVisible(True)
+        self.codec_pill.set_loading()
+
+        self._device_address = None
+        try:
+            self._device_address = OfbQtConfigParser.get_instance().get("device", "address")
+        except Exception:
+            pass
+
+        self._codec_timer = QTimer(self)
+        self._codec_timer.setInterval(1500)
+        self._codec_timer.timeout.connect(self._check_codec)
+        self._codec_timer.start()
+
+        self._check_codec()
 
     def _add_slider(self, i):
         lock = asyncio.Lock()
@@ -132,6 +240,40 @@ class OfbQtSoundQualityModule(Ui_OfbQtSoundQualityModule, OfbQtCommonModule):
                     with blocked_signals(self._eq_rows[i]):
                         self._eq_rows[i].setValue(value)
                         self._eq_rows[i].setToolTip(str(value))
+
+        await self._update_codec_pill()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.codec_pill.setVisible(True)
+        self._check_codec()
+
+    def _check_codec(self):
+        self.codec_pill.setVisible(True)
+        if not self._device_address:
+            try:
+                self._device_address = OfbQtConfigParser.get_instance().get("device", "address")
+            except Exception:
+                pass
+
+        codec_info = get_active_bluetooth_audio_codec(self._device_address)
+        if codec_info:
+            self.codec_pill.set_codec(codec_info["label"], codec_info["tooltip"])
+            if hasattr(self, "_codec_timer") and self._codec_timer.interval() != 4000:
+                self._codec_timer.setInterval(4000)
+        else:
+            self.codec_pill.set_loading()
+            if hasattr(self, "_codec_timer") and self._codec_timer.interval() != 1500:
+                self._codec_timer.setInterval(1500)
+
+    async def _update_codec_pill(self):
+        try:
+            _, addr = await self.ofb.get_device_tags()
+            if addr:
+                self._device_address = addr
+        except Exception:
+            pass
+        self._check_codec()
 
     @asyncSlot()
     async def on_custom_save(self):

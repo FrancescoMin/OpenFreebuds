@@ -62,3 +62,80 @@ async def set_run_at_boot(val):
                 winreg.DeleteValue(key, "openfreebuds")
         except OSError:
             return
+
+
+def get_active_bluetooth_audio_codec(mac_address=None):
+    clean_mac = mac_address.replace(":", "").replace("-", "").upper() if mac_address else None
+    render_key = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"
+    try:
+        root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, render_key)
+    except Exception:
+        return None
+
+    num_subkeys = winreg.QueryInfoKey(root)[0]
+    for i in range(num_subkeys):
+        guid = winreg.EnumKey(root, i)
+        try:
+            prop_key = winreg.OpenKey(root, guid + r"\Properties")
+        except Exception:
+            continue
+
+        endpoint_id = ""
+        driver_inf = ""
+        device_name = ""
+        fmt_bytes = None
+
+        j = 0
+        while True:
+            try:
+                name, val, _ = winreg.EnumValue(prop_key, j)
+                if name == "{b3f8fa53-0004-438e-9003-51a46e139bfc},2":
+                    endpoint_id = str(val)
+                elif name == "{b3f8fa53-0004-438e-9003-51a46e139bfc},6":
+                    device_name = str(val)
+                elif name == "{83da6326-97a6-4088-9453-a1923f573b29},3":
+                    driver_inf = str(val)
+                elif name == "{f19f064d-082c-4e27-bc73-6882a1bb8e4c},0":
+                    fmt_bytes = val
+                j += 1
+            except OSError:
+                break
+
+        if not fmt_bytes or "BTHENUM" not in endpoint_id:
+            continue
+
+        if clean_mac and clean_mac not in endpoint_id.upper():
+            continue
+
+        import struct
+        offset = 8 if len(fmt_bytes) > 10 and fmt_bytes[8:10] in (b"\xfe\xff", b"\x01\x00") else 0
+        if len(fmt_bytes) >= offset + 16:
+            wFormatTag, nChannels, nSamplesPerSec = struct.unpack_from("<HHI", fmt_bytes, offset)
+            wBitsPerSample = struct.unpack_from("<H", fmt_bytes, offset + 14)[0] if len(fmt_bytes) >= offset + 16 else 16
+        else:
+            nSamplesPerSec = 48000
+            wBitsPerSample = 16
+
+        driver_lower = driver_inf.lower()
+        if nSamplesPerSec >= 88200 or "alt_a2dp" in driver_lower or "a2dpdriver" in driver_lower:
+            codec = "LDAC"
+            theme = "ldac"
+        elif nSamplesPerSec == 48000 or "a2dp" in driver_lower:
+            codec = "AAC"
+            theme = "aac"
+        else:
+            codec = "SBC"
+            theme = "sbc"
+
+        rate_str = f"{nSamplesPerSec / 1000:.1f}".rstrip("0").rstrip(".") + " kHz"
+        return {
+            "codec": codec,
+            "rate": nSamplesPerSec,
+            "bits": wBitsPerSample,
+            "label": f"{codec} • {rate_str}",
+            "theme": theme,
+            "tooltip": f"Codec Bluetooth A2DP: {codec}\nFrequenza di campionamento: {nSamplesPerSec:,} Hz\nProfondit\u00e0: {wBitsPerSample}-bit\nDispositivo: {device_name}"
+        }
+
+    return None
+
