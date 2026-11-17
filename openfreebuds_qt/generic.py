@@ -27,6 +27,7 @@ class IOfbQtApplication(QApplication):
     ofb: IOpenFreebuds
     tray: IOfbTrayIcon
     updater_service: OfbQtUpdaterService
+    floating_widget: any
 
     async def exit(self, ret_code: int = 0):
         raise NotImplementedError("Not implemented")

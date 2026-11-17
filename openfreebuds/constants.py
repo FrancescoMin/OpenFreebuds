@@ -10,6 +10,7 @@ class OfbEventKind:
     PROPERTY_CHANGED = "prop_changed"
     QT_BRING_SETTINGS_UP = "qt::show_settings"
     QT_SETTINGS_CHANGED = "qt::settings_changed"
+    QT_TOGGLE_FLOATING_WIDGET = "qt::toggle_floating_widget"
 
 
 APP_ROOT = Path(os.path.dirname(os.path.realpath(__file__))).parent

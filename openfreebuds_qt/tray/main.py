@@ -305,6 +305,10 @@ class OfbTrayIcon(IOfbTrayIcon):
                         self.ctx.main_window.show()
                         self.ctx.main_window.activateWindow()
 
+                    if event.kind_match(OfbEventKind.QT_TOGGLE_FLOATING_WIDGET):
+                        if getattr(self.ctx, "floating_widget", None) is not None:
+                            self.ctx.floating_widget.toggle_visibility()
+
                     if event.kind_match(OfbEventKind.STATE_CHANGED) and args[0] == IOpenFreebuds.STATE_DESTROYED:
                         raise OfbServerDeadError("Server going to exit")
 
@@ -315,6 +319,8 @@ class OfbTrayIcon(IOfbTrayIcon):
                         OfbEventKind.PROPERTY_CHANGED,
                     ]):
                         await self._update_ui(event)
+                        if getattr(self.ctx, "floating_widget", None) is not None:
+                            await self.ctx.floating_widget.update_ui(event)
             except asyncio.CancelledError:
                 await self.ofb.unsubscribe(member_id)
             except OfbServerDeadError:

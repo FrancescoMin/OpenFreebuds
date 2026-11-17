@@ -74,6 +74,11 @@ class OfbQtUiSettingsModule(Ui_OfbQtUiSettingsModule, OfbQtCommonModule):
                 self.config.get("ui", "battery_overlay_on_connect", False)
             )
 
+        with blocked_signals(self.floating_widget_toggle):
+            self.floating_widget_toggle.setChecked(
+                self.config.get("floating_widget", "enabled", False)
+            )
+
         self.low_battery_overlay_test_button.setVisible(bool(getattr(self.ctx.args, "virtual_device", None)))
 
     async def update_ui(self, event: OfbCoreEvent):
@@ -93,6 +98,9 @@ class OfbQtUiSettingsModule(Ui_OfbQtUiSettingsModule, OfbQtCommonModule):
             else:
                 self.background_toggle.setChecked(False)
                 self.background_toggle.setEnabled(False)
+
+        with blocked_signals(self.floating_widget_toggle):
+            self.floating_widget_toggle.setChecked(self.config.get("floating_widget", "enabled", False))
 
     @asyncSlot(bool)
     async def on_background_toggle(self, value: bool):
@@ -124,6 +132,19 @@ class OfbQtUiSettingsModule(Ui_OfbQtUiSettingsModule, OfbQtCommonModule):
     async def on_battery_overlay_on_connect_toggle(self, value: bool):
         self.config.set("ui", "battery_overlay_on_connect", value)
         self.config.save()
+
+    @asyncSlot(bool)
+    async def on_floating_widget_toggle(self, value: bool):
+        self.config.set("floating_widget", "enabled", value)
+        self.config.save()
+        fw = getattr(self.ctx, "floating_widget", None)
+        if fw is not None:
+            if value:
+                fw.show_widget()
+            else:
+                fw.hide_widget()
+        if getattr(self.ctx, "tray", None) and getattr(self.ctx.tray, "menu", None):
+            self.ctx.tray.menu.floating_widget_action.setChecked(value)
 
     @asyncSlot()
     async def on_low_battery_overlay_test(self):

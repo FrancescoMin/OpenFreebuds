@@ -33,4 +33,7 @@ def get_shortcut_names():
         "mode_cancellation": QApplication.translate("ShortcutName", "Enable noise cancellation"),
         "mode_awareness": QApplication.translate("ShortcutName", "Enable awareness mode"),
         "enable_low_latency": QApplication.translate("ShortcutName", "Enable low-latency mode"),
+        "toggle_floating_widget": QApplication.translate("ShortcutName", "Toggle floating widget"),
+        "toggle_mic_mute": QApplication.translate("ShortcutName", "Mute/unmute microphone"),
+        "toggle_speaker_mute": QApplication.translate("ShortcutName", "Mute/unmute audio"),
     }

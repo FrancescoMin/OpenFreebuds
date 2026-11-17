@@ -56,3 +56,27 @@ def is_dark_taskbar():
 
 def get_active_bluetooth_audio_codec(mac_address=None):
     return None
+
+
+def get_microphone_mute() -> bool:
+    return False
+
+
+def set_microphone_mute(muted: bool) -> bool:
+    return False
+
+
+def toggle_microphone_mute() -> bool:
+    return False
+
+
+def get_speaker_mute() -> bool:
+    return False
+
+
+def set_speaker_mute(muted: bool) -> bool:
+    return False
+
+
+def toggle_speaker_mute() -> bool:
+    return False

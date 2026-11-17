@@ -84,6 +84,15 @@ class OfbShortcuts:
     async def do_show_main_window(self):
         await self.ofb.send_message(OfbEventKind.QT_BRING_SETTINGS_UP)
 
+    async def do_toggle_floating_widget(self):
+        await self.ofb.send_message(OfbEventKind.QT_TOGGLE_FLOATING_WIDGET)
+
+    async def do_toggle_mic_mute(self):
+        openfreebuds_backend.toggle_microphone_mute()
+
+    async def do_toggle_speaker_mute(self):
+        openfreebuds_backend.toggle_speaker_mute()
+
     async def do_disconnect(self):
         state = await self.ofb.get_state()
         if state == IOpenFreebuds.STATE_DISCONNECTED:

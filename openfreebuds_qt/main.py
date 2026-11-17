@@ -14,6 +14,7 @@ from openfreebuds.constants import STORAGE_PATH, APP_ROOT
 from openfreebuds.utils.logger import setup_logging, screen_handler, create_logger
 from openfreebuds_qt.app.dialog.first_run import OfbQtFirstRunDialog
 from openfreebuds_qt.app.main import OfbQtMainWindow
+from openfreebuds_qt.app.widget.floating_widget import OfbQtFloatingWidget
 from openfreebuds_qt.config import OfbQtConfigParser, ConfigLock
 from openfreebuds_qt.constants import IGNORED_LOG_TAGS, I18N_PATH
 from openfreebuds_qt.generic import IOfbQtApplication
@@ -47,6 +48,7 @@ class OfbQtApplication(IOfbQtApplication):
         self.tray: Optional[OfbTrayIcon] = None
         self.main_window: Optional[OfbQtMainWindow] = None
         self.updater_service: Optional[OfbQtUpdaterService] = None
+        self.floating_widget: Optional[OfbQtFloatingWidget] = None
 
         # Global menu
         self.global_menu: Optional[QMenuBar] = None
@@ -130,6 +132,11 @@ class OfbQtApplication(IOfbQtApplication):
             await self.main_window.boot()
             await self.updater_service.boot()
 
+            # Floating widget
+            self.floating_widget = OfbQtFloatingWidget(self)
+            if self.config.get("floating_widget", "enabled", False):
+                self.floating_widget.show_widget()
+
             # Qt version check & warn
             # with suppress(Exception):
             #     if float(".".join(QT_VERSION_STR.split(".")[:2])) < 6.7:
@@ -154,6 +161,8 @@ class OfbQtApplication(IOfbQtApplication):
             log.exception("Boot failure")
 
     async def exit(self, ret_code: int = 0):
+        if self.floating_widget is not None:
+            self.floating_widget.close()
         await self.tray.close()
         self.main_window.hide()
 

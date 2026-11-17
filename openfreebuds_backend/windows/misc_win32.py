@@ -139,3 +139,138 @@ def get_active_bluetooth_audio_codec(mac_address=None):
 
     return None
 
+
+# ---------------------------------------------------------
+# Windows Core Audio (MMDeviceAPI) Mute / Volume Helpers
+# ---------------------------------------------------------
+
+import ctypes
+from ctypes import POINTER, c_long, c_int, byref, c_void_p, c_wchar_p
+from ctypes.wintypes import DWORD, BOOL
+
+_ole32 = ctypes.windll.ole32
+
+
+class _COM_GUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", ctypes.c_ulong),
+        ("Data2", ctypes.c_ushort),
+        ("Data3", ctypes.c_ushort),
+        ("Data4", ctypes.c_ubyte * 8)
+    ]
+
+    @classmethod
+    def from_str(cls, s: str):
+        g = cls()
+        _ole32.IIDFromString(c_wchar_p(s), byref(g))
+        return g
+
+
+_CLSID_MMDeviceEnumerator = _COM_GUID.from_str("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
+_IID_IMMDeviceEnumerator = _COM_GUID.from_str("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+_IID_IAudioEndpointVolume = _COM_GUID.from_str("{5CDF2C82-841E-4546-9722-0CF74078229A}")
+
+
+def _get_endpoint_volume(dataflow: int):
+    """
+    Retrieves IAudioEndpointVolume COM interface.
+    dataflow: 0 = eRender (Speakers), 1 = eCapture (Microphone)
+    """
+    _ole32.CoInitialize(None)
+    enumerator = c_void_p()
+    hr = _ole32.CoCreateInstance(
+        byref(_CLSID_MMDeviceEnumerator), None, 1, byref(_IID_IMMDeviceEnumerator), byref(enumerator)
+    )
+    if hr != 0 or not enumerator:
+        return None, None
+
+    enum_vtbl = ctypes.cast(ctypes.cast(enumerator, POINTER(c_void_p)).contents, POINTER(c_void_p))
+    GetDefaultAudioEndpoint = ctypes.WINFUNCTYPE(c_long, c_void_p, c_int, c_int, POINTER(c_void_p))(enum_vtbl[4])
+    device = c_void_p()
+    hr = GetDefaultAudioEndpoint(enumerator, dataflow, 0, byref(device))
+    # Release enumerator
+    ctypes.WINFUNCTYPE(c_long, c_void_p)(enum_vtbl[2])(enumerator)
+
+    if hr != 0 or not device:
+        return None, None
+
+    dev_vtbl = ctypes.cast(ctypes.cast(device, POINTER(c_void_p)).contents, POINTER(c_void_p))
+    Activate = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(_COM_GUID), DWORD, c_void_p, POINTER(c_void_p))(dev_vtbl[3])
+    endpoint_vol = c_void_p()
+    hr = Activate(device, byref(_IID_IAudioEndpointVolume), 1, None, byref(endpoint_vol))
+    # Release device
+    ctypes.WINFUNCTYPE(c_long, c_void_p)(dev_vtbl[2])(device)
+
+    if hr != 0 or not endpoint_vol:
+        return None, None
+
+    vol_vtbl = ctypes.cast(ctypes.cast(endpoint_vol, POINTER(c_void_p)).contents, POINTER(c_void_p))
+    return endpoint_vol, vol_vtbl
+
+
+def get_audio_mute(dataflow: int) -> bool:
+    """
+    Queries current mute status for default audio device.
+    dataflow: 0 = render (output/speaker), 1 = capture (microphone)
+    """
+    try:
+        vol, vol_vtbl = _get_endpoint_volume(dataflow)
+        if not vol:
+            return False
+        GetMute = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(BOOL))(vol_vtbl[15])
+        is_muted = BOOL()
+        hr = GetMute(vol, byref(is_muted))
+        ctypes.WINFUNCTYPE(c_long, c_void_p)(vol_vtbl[2])(vol)
+        return bool(is_muted.value) if hr == 0 else False
+    except Exception:
+        return False
+
+
+def set_audio_mute(dataflow: int, muted: bool) -> bool:
+    """
+    Sets mute status for default audio device.
+    dataflow: 0 = render (output/speaker), 1 = capture (microphone)
+    """
+    try:
+        vol, vol_vtbl = _get_endpoint_volume(dataflow)
+        if not vol:
+            return False
+        SetMute = ctypes.WINFUNCTYPE(c_long, c_void_p, BOOL, c_void_p)(vol_vtbl[14])
+        hr = SetMute(vol, BOOL(muted), None)
+        ctypes.WINFUNCTYPE(c_long, c_void_p)(vol_vtbl[2])(vol)
+        return hr == 0
+    except Exception:
+        return False
+
+
+def toggle_audio_mute(dataflow: int) -> bool:
+    curr = get_audio_mute(dataflow)
+    new_state = not curr
+    set_audio_mute(dataflow, new_state)
+    return new_state
+
+
+def get_microphone_mute() -> bool:
+    return get_audio_mute(1)
+
+
+def set_microphone_mute(muted: bool) -> bool:
+    return set_audio_mute(1, muted)
+
+
+def toggle_microphone_mute() -> bool:
+    return toggle_audio_mute(1)
+
+
+def get_speaker_mute() -> bool:
+    return get_audio_mute(0)
+
+
+def set_speaker_mute(muted: bool) -> bool:
+    return set_audio_mute(0, muted)
+
+
+def toggle_speaker_mute() -> bool:
+    return toggle_audio_mute(0)
+
+

@@ -75,6 +75,11 @@ class OfbQtTrayMenu(OfbQtTrayMenuCommon):
         # Extras
         self.new_section()
         self.add_item(self.tr("Settings…"), callback=self.do_settings)
+        self.floating_widget_action = self.add_item(
+            self.tr("Floating widget"),
+            callback=self.do_toggle_floating_widget,
+            checked=self.config.get("floating_widget", "enabled", False),
+        )
         self.equalizer_submenu = OfbDeviceEqualizerTrayMenu(self, self.ctx)
         self.equalizer_action = self.add_menu(self.equalizer_submenu)
         self.dual_connect_submenu = OfbDeviceDualConnectTrayMenu(self, self.ctx)
@@ -109,6 +114,10 @@ class OfbQtTrayMenu(OfbQtTrayMenuCommon):
                 and self.config.get("ui", "tray_show_dual_connect", False)
                 and await self.ofb.get_property("dual_connect", "preferred_device", None) is not None
             )
+
+            fw = getattr(self.ctx, "floating_widget", None)
+            if fw is not None:
+                self.floating_widget_action.setChecked(fw.isVisible())
 
         if self.is_connected:
             if event.is_changed("battery", "") or self.first_time_render:
@@ -188,6 +197,13 @@ class OfbQtTrayMenu(OfbQtTrayMenuCommon):
             await self.ofb.run_shortcut("connect", no_catch=True)
         except OfbBackendDependencyMissingError as e:
             await OfbQtDependencyMissingDialog(self, list(e.args)).get_user_response()
+
+    @asyncSlot()
+    async def do_toggle_floating_widget(self):
+        fw = getattr(self.ctx, "floating_widget", None)
+        if fw is not None:
+            fw.toggle_visibility()
+            self.floating_widget_action.setChecked(fw.isVisible())
 
     def do_settings(self):
         if self.ctx.main_window.isVisible():
